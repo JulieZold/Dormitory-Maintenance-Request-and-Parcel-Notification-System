@@ -174,6 +174,8 @@ function admin_header($active = "") {
       <a class="sidebar-link <?= $active==='parcels'?'sidebar-active':'' ?>" href="parcels.php">แจ้งพัสดุ</a>
       <a class="sidebar-link <?= $active==='users'?'sidebar-active':'' ?>" href="users.php">จัดการผู้เช่า</a>
       <a class="sidebar-link <?= $active==='reports'?'sidebar-active':'' ?>" href="reports.php">รายงานสถิติ</a>
+      <a class="sidebar-link" href="../logout.php">ออกจากระบบ</a>
+
     </nav>
   </aside>
 
