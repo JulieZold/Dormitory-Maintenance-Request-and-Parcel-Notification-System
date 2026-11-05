@@ -69,13 +69,50 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $repairs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-/* สถิติสำหรับกราฟรายเดือน และ กราฟหมวดหมู่ */
-$monthlyStmt = $pdo->prepare("SELECT MONTH(created_at) AS month_num, COUNT(*) AS total FROM repair_requests WHERE user_id = ? GROUP BY MONTH(created_at)");
-$monthlyStmt->execute([$user_id]);
-$monthlyData = $monthlyStmt->fetchAll(PDO::FETCH_KEY_PAIR);
-$months = [1 => "ม.ค.", 2 => "ก.พ.", 3 => "มี.ค.", 4 => "เม.ย.", 5 => "พ.ค.", 6 => "มิ.ย."];
-$maxMonthly = max(array_merge([1], array_values($monthlyData)));
+/* =========================
+   Monthly chart (6 เดือนล่าสุด)
+========================= */
+$months = [];
+for ($i = 5; $i >= 0; $i--) {
+    $time = strtotime("-$i months");
+    $yearNum = date("Y", $time);
+    $monthNum = (int)date("n", $time);
+    
+    $tMonths = [
+      1 => "ม.ค.", 2 => "ก.พ.", 3 => "มี.ค.", 4 => "เม.ย.", 
+      5 => "พ.ค.", 6 => "มิ.ย.", 7 => "ก.ค.", 8 => "ส.ค.", 
+      9 => "ก.ย.", 10 => "ต.ค.", 11 => "พ.ย.", 12 => "ธ.ค."
+    ];
+    
+    $key = "$yearNum-$monthNum";
+    $months[$key] = [
+        'name' => $tMonths[$monthNum],
+        'count' => 0
+    ];
+}
 
+$monthlyStmt = $pdo->prepare("
+  SELECT 
+    YEAR(created_at) AS y,
+    MONTH(created_at) AS m,
+    COUNT(*) AS total 
+  FROM repair_requests 
+  WHERE user_id = ? AND created_at >= DATE_SUB(CURDATE(), INTERVAL 5 MONTH)
+  GROUP BY YEAR(created_at), MONTH(created_at)
+");
+$monthlyStmt->execute([$user_id]);
+$rawMonthly = $monthlyStmt->fetchAll(PDO::FETCH_ASSOC);
+
+foreach ($rawMonthly as $row) {
+    $key = "{$row['y']}-{$row['m']}";
+    if (isset($months[$key])) {
+        $months[$key]['count'] = (int)$row['total'];
+    }
+}
+
+$maxMonthly = max(array_merge([1], array_column($months, 'count')));
+
+/* สถิติตามประเภท */
 $categoryStmt = $pdo->prepare("SELECT c.category_name, COUNT(*) AS total FROM repair_requests rr JOIN repair_categories c ON rr.category_id = c.category_id WHERE rr.user_id = ? GROUP BY c.category_id, c.category_name");
 $categoryStmt->execute([$user_id]);
 $categoryData = $categoryStmt->fetchAll(PDO::FETCH_KEY_PAIR);
@@ -123,15 +160,18 @@ user_header("history");
   <div class="grid grid-cols-2 gap-6">
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
       <div class="flex justify-between items-center mb-6">
-        <h2 class="text-xl font-semibold text-slate-800">สถิติรายเดือน</h2>
+        <h2 class="text-xl font-semibold text-slate-800">สถิติการแจ้งซ่อมรายเดือน (6 เดือนล่าสุด)</h2>
       </div>
       <div class="flex items-end gap-7 h-[180px] px-4 border-b border-slate-300">
-        <?php foreach ($months as $monthNum => $monthName): ?>
-          <?php $count = $monthlyData[$monthNum] ?? 0; $height = $count > 0 ? max(28, ($count / $maxMonthly) * 135) : 18; ?>
+        <?php foreach ($months as $mdata): ?>
+          <?php 
+            $count = $mdata['count']; 
+            $height = $count > 0 ? max(28, ($count / $maxMonthly) * 135) : 18; 
+          ?>
           <div class="text-center flex-1">
             <div class="flex justify-center items-end h-[140px]"><div class="w-[42px] rounded-t-lg bg-blue-500" style="height: <?= $height ?>px;"></div></div>
             <p class="text-sm font-semibold text-slate-700 mt-2"><?= $count ?></p>
-            <p class="text-sm text-slate-500"><?= $monthName ?></p>
+            <p class="text-sm text-slate-500"><?= $mdata['name'] ?></p>
           </div>
         <?php endforeach; ?>
       </div>
@@ -189,7 +229,6 @@ user_header("history");
               $appointmentDate = !empty($r["appointment_date"]) ? date("d M Y", strtotime($r["appointment_date"])) : "-";
               $confirmedDateText = !empty($r["confirmed_date"]) ? date("d M Y", strtotime($r["confirmed_date"])) : "";
               
-              // เช็คว่าต้องการการตอบรับจากผู้ใช้หรือไม่
               $needsAck = !empty($r["confirmed_date"]) && empty($r["acknowledged_at"]) && $r["status"] !== "เสร็จสิ้น";
             ?>
             <tr class="border-b border-slate-100 hover:bg-slate-50 transition relative">

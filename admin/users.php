@@ -190,7 +190,6 @@ admin_header("users");
                   placeholder="กรอกชื่อ-นามสกุล" 
                   oninput="this.value = this.value.replace(/[^ก-๙a-zA-Z\s]/g, '')"
                   class="w-full h-[52px] rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-blue-300">
-        <input name="full_name" required value="<?= htmlspecialchars($edit_user['full_name']) ?>" class="w-full h-[52px] rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-orange-300">
         </div>
 
         <div>
