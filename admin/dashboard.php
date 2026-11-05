@@ -65,28 +65,57 @@ $stmt->execute($params);
 $repairs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 /* =========================
-   Monthly chart
+   Monthly chart (6 เดือนล่าสุด)
 ========================= */
-$monthlyStmt = $pdo->query("
-  SELECT 
-    MONTH(created_at) AS month_num,
-    COUNT(*) AS total
-  FROM repair_requests
-  WHERE YEAR(created_at) = YEAR(CURRENT_DATE())
-  GROUP BY MONTH(created_at)
-");
-$monthlyData = $monthlyStmt->fetchAll(PDO::FETCH_KEY_PAIR);
-
-$months = [
-  1 => "ม.ค.",
-  2 => "ก.พ.",
-  3 => "มี.ค.",
-  4 => "เม.ย.",
-  5 => "พ.ค.",
-  6 => "มิ.ย.",
+$months = [];
+$thaiMonths = [
+    1 => "ม.ค.", 2 => "ก.พ.", 3 => "มี.ค.", 4 => "มิ.ย.", // ปรับตามความเหมาะสม
+    5 => "พ.ค.", 6 => "มิ.ย.", 7 => "ก.ค.", 8 => "ส.ค.", 
+    9 => "ก.ย.", 10 => "ต.ค.", 11 => "พ.ย.", 12 => "ธ.ค."
 ];
 
-$maxMonthly = max(array_merge([1], array_values($monthlyData)));
+// วนลูปสร้างโครงสร้าง 6 เดือนย้อนหลังรวมเดือนปัจจุบัน
+for ($i = 5; $i >= 0; $i--) {
+    $time = strtotime("-$i months");
+    $yearNum = date("Y", $time);
+    $monthNum = (int)date("n", $time);
+    
+    // ตั้งชื่อย่อเดือนภาษาไทยแบบถูกต้อง
+    $tMonths = [
+      1 => "ม.ค.", 2 => "ก.พ.", 3 => "มี.ค.", 4 => "เม.ย.", 
+      5 => "พ.ค.", 6 => "มิ.ย.", 7 => "ก.ค.", 8 => "ส.ค.", 
+      9 => "ก.ย.", 10 => "ต.ค.", 11 => "พ.ย.", 12 => "ธ.ค."
+    ];
+    
+    $key = "$yearNum-$monthNum";
+    $months[$key] = [
+        'name' => $tMonths[$monthNum],
+        'count' => 0
+    ];
+}
+
+// ดึงข้อมูลคำขอซ่อมเฉพาะช่วง 6 เดือนล่าสุดจากฐานข้อมูล
+$monthlyStmt = $pdo->query("
+  SELECT 
+    YEAR(created_at) AS y,
+    MONTH(created_at) AS m,
+    COUNT(*) AS total
+  FROM repair_requests
+  WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 5 MONTH)
+  GROUP BY YEAR(created_at), MONTH(created_at)
+");
+$rawMonthly = $monthlyStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// นำข้อมูลที่ดึงได้มาใส่ลงในอาเรย์ 6 เดือน
+foreach ($rawMonthly as $row) {
+    $key = "{$row['y']}-{$row['m']}";
+    if (isset($months[$key])) {
+        $months[$key]['count'] = (int)$row['total'];
+    }
+}
+
+// หาค่าสูงสุดเพื่อเทียบความสูงกราฟแท่ง
+$maxMonthly = max(array_merge([1], array_column($months, 'count')));
 
 /* =========================
    Category chart
@@ -164,13 +193,13 @@ admin_header("dashboard");
   <div class="grid grid-cols-2 gap-4">
     <div class="bg-white rounded-xl border border-slate-200 shadow-sm px-5 py-4">
       <h2 class="text-base font-semibold text-slate-800 mb-3">
-        คำขอซ่อมรายเดือน
+        คำขอซ่อมรายเดือน (6 เดือนล่าสุด)
       </h2>
 
       <div class="flex items-end gap-5 h-[140px] px-2 border-b border-slate-300">
-        <?php foreach ($months as $monthNum => $monthName): ?>
+        <?php foreach ($months as $mdata): ?>
           <?php
-            $count = $monthlyData[$monthNum] ?? 0;
+            $count = $mdata['count'];
             $height = $count > 0 ? max(20, ($count / $maxMonthly) * 80) : 12;
           ?>
 
@@ -182,7 +211,7 @@ admin_header("dashboard");
               ></div>
             </div>
             <p class="text-xs font-semibold text-slate-700 mt-1"><?= $count ?></p>
-            <p class="text-xs text-slate-500 pb-1"><?= $monthName ?></p>
+            <p class="text-xs text-slate-500 pb-1"><?= $mdata['name'] ?></p>
           </div>
         <?php endforeach; ?>
       </div>

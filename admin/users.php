@@ -5,6 +5,9 @@ require_admin();
 require_once "../config/db.php";
 require_once "layout.php";
 
+$error_message = "";
+$success_message = "";
+
 /* =========================
    Process Forms (Add & Edit)
 ========================= */
@@ -12,20 +15,40 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   $action = $_POST["action"] ?? "add";
 
   if ($action === "add") {
+    $username = trim($_POST["username"]);
+    $room_id = $_POST["room_id"];
+
+    // 1. ตรวจสอบว่า Username ซ้ำในระบบหรือไม่
+    $checkUser = $pdo->prepare("SELECT COUNT(*) FROM users WHERE username = ?");
+    $checkUser->execute([$username]);
+    if ($checkUser->fetchColumn() > 0) {
+      header("Location: users.php?status=error&message=" . urlencode("ชื่อผู้ใช้ (Username) '$username' นี้มีอยู่ในระบบแล้ว กรุณาใช้ชื่ออื่น"));
+      exit;
+    }
+
+    // 2. ตรวจสอบว่าห้องนี้มีผู้ใช้งานที่สถานะ 'ใช้งานอยู่' อยู่แล้วหรือไม่
+    $checkRoom = $pdo->prepare("SELECT COUNT(*) FROM users WHERE room_id = ? AND status = 'ใช้งานอยู่'");
+    $checkRoom->execute([$room_id]);
+    if ($checkRoom->fetchColumn() > 0) {
+      header("Location: users.php?status=error&message=" . urlencode("ห้องพักนี้มีผู้ใช้งานที่กำลังเข้าพักอยู่แล้ว ไม่สามารถเพิ่มผู้เช่าซ้ำในห้องเดียวกันได้"));
+      exit;
+    }
+
+    // บันทึกข้อมูลผู้เช่าใหม่
     $hash = password_hash($_POST["password"], PASSWORD_DEFAULT);
     $stmt = $pdo->prepare("
       INSERT INTO users (room_id, full_name, email, phone, username, password, role, status, must_change_password)
       VALUES (?, ?, ?, ?, ?, ?, 'user', 'ใช้งานอยู่', 1)
     ");
     $stmt->execute([
-      $_POST["room_id"],
+      $room_id,
       $_POST["full_name"],
       $_POST["email"],
       $_POST["phone"],
-      $_POST["username"],
+      $username,
       $hash
     ]);
-    header("Location: users.php");
+    header("Location: users.php?status=success");
     exit;
 
   } elseif ($action === "edit") {
@@ -159,9 +182,15 @@ admin_header("users");
       </div>
 
       <div class="grid grid-cols-3 gap-4">
-        <div>
-          <label class="block mb-2 text-slate-700 font-medium">ชื่อ - นามสกุล</label>
-          <input name="full_name" required value="<?= htmlspecialchars($edit_user['full_name']) ?>" class="w-full h-[52px] rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-orange-300">
+        <div><label class="block mb-2 text-slate-700 font-medium">ชื่อ - นามสกุล</label>
+                <input 
+                  type="text" 
+                  name="full_name" 
+                  required 
+                  placeholder="กรอกชื่อ-นามสกุล" 
+                  oninput="this.value = this.value.replace(/[^ก-๙a-zA-Z\s]/g, '')"
+                  class="w-full h-[52px] rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-blue-300">
+        <input name="full_name" required value="<?= htmlspecialchars($edit_user['full_name']) ?>" class="w-full h-[52px] rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-orange-300">
         </div>
 
         <div>
@@ -170,8 +199,14 @@ admin_header("users");
         </div>
 
         <div>
-          <label class="block mb-2 text-slate-700 font-medium">เบอร์โทร</label>
-          <input name="phone" value="<?= htmlspecialchars($edit_user['phone']) ?>" class="w-full h-[52px] rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-orange-300">
+         <label class="block mb-2 text-slate-700 font-medium">เบอร์โทร</label>
+          <input 
+            type="tel" 
+            name="phone" 
+            maxlength="10" 
+            placeholder="0812345678" 
+            oninput="this.value = this.value.replace(/[^0-9]/g, '')"
+            class="w-full h-[52px] rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-blue-300">
         </div>
 
         <div>
@@ -224,9 +259,24 @@ admin_header("users");
       </div>
 
       <div class="grid grid-cols-3 gap-4">
-        <div><label class="block mb-2 text-slate-700 font-medium">ชื่อ - นามสกุล</label><input name="full_name" required placeholder="เช่น ชัญญา สุข" class="w-full h-[52px] rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-blue-300"></div>
+        <div><label class="block mb-2 text-slate-700 font-medium">ชื่อ - นามสกุล</label>
+                <input 
+                  type="text" 
+                  name="full_name" 
+                  required 
+                  placeholder="กรอกชื่อ-นามสกุล" 
+                  oninput="this.value = this.value.replace(/[^ก-๙a-zA-Z\s]/g, '')"
+                  class="w-full h-[52px] rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-blue-300"></div>
         <div><label class="block mb-2 text-slate-700 font-medium">อีเมล</label><input name="email" type="email" placeholder="example@gmail.com" class="w-full h-[52px] rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-blue-300"></div>
-        <div><label class="block mb-2 text-slate-700 font-medium">เบอร์โทร</label><input name="phone" placeholder="081-234-5678" class="w-full h-[52px] rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-blue-300"></div>
+        <div><label class="block mb-2 text-slate-700 font-medium">เบอร์โทร</label>
+              <input 
+                type="tel" 
+                name="phone" 
+                maxlength="10" 
+                placeholder="0812345678" 
+                oninput="this.value = this.value.replace(/[^0-9]/g, '')"
+                class="w-full h-[52px] rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-blue-300">
+            </div>
         <div><label class="block mb-2 text-slate-700 font-medium">Username</label><input name="username" required placeholder="เช่น room104" class="w-full h-[52px] rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-blue-300"></div>
         <div><label class="block mb-2 text-slate-700 font-medium">Password เริ่มต้น</label><input name="password" required placeholder="รหัสผ่านเริ่มต้น" class="w-full h-[52px] rounded-xl border border-slate-300 px-4 focus:ring-2 focus:ring-blue-300"></div>
         <div>
@@ -355,5 +405,38 @@ admin_header("users");
     </table>
   </div>
 </div>
+
+<!-- โหลดไลบรารี SweetAlert2 สำหรับแสดง Popup แจ้งเตือน -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script>
+  // ตรวจสอบสถานะการแจ้งเตือนจาก URL Parameters
+  const urlParams = new URLSearchParams(window.location.search);
+  const status = urlParams.get('status');
+  const message = urlParams.get('message');
+
+  if (status === 'error') {
+    Swal.fire({
+      icon: 'error',
+      title: 'ไม่สามารถเพิ่มผู้ใช้งานได้',
+      text: message || 'เกิดข้อผิดพลาดบางประการ',
+      confirmButtonText: 'ตกลง',
+      confirmButtonColor: '#3b82f6'
+    }).then(() => {
+      // ล้างค่า Query String ออกจาก URL เพื่อป้องกันไม่ให้ Popup เด้งซ้ำเวลารีเฟรช
+      window.history.replaceState({}, document.title, window.location.pathname);
+    });
+  } else if (status === 'success') {
+    Swal.fire({
+      icon: 'success',
+      title: 'บันทึกข้อมูลสำเร็จ',
+      text: 'เพิ่มผู้เช่าใหม่เข้าสู่ระบบเรียบร้อยแล้ว',
+      timer: 1500,
+      showConfirmButton: false
+    }).then(() => {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    });
+  }
+</script>
 
 <?php admin_footer(); ?>
